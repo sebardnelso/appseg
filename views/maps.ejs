@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de Ubicaciones</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <link rel="stylesheet" href="/maps.css" /> <!-- Enlace al archivo CSS -->
+    <style>
+        #map {
+            height: 600px; /* Altura del mapa */
+            width: 100%; /* Ancho del mapa */
+        }
+    </style>
+</head>
+<body>
+    <h1>Ubicaciones de Vendedores</h1>
+
+    <form id="filterForm">
+        <label for="vendedorSelect">Seleccionar Vendedor:</label>
+        <select id="vendedorSelect">
+            <option value="">Todos</option>
+            <% vendedores.forEach(vendedor => { %>
+                <option value="<%= vendedor.id %>"><%= vendedor.nombre %></option>
+            <% }); %>
+        </select>
+        <button type="submit">Filtrar</button>
+    </form>
+
+    <div id="latitud" style="display:none;"></div>
+    <div id="longitud" style="display:none;"></div>
+    <div id="mensaje" style="display:none;"></div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script>
+        // Inicializar el mapa
+        const map = L.map('map').setView([-27.473241, -55.106377], 10); // Ajusta la vista inicial según tus coordenadas
+
+        // Agregar capa de OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        let ubicacionesString = '<%= JSON.stringify(ubicaciones) %>';
+        console.log("Datos de ubicaciones:", ubicacionesString); // Debe mostrar un JSON válido
+        let ubicaciones = [];
+        try {
+            ubicaciones = ubicacionesString ? JSON.parse(ubicacionesString) : [];
+        } catch (error) {
+            console.error("Error al parsear JSON:", error);
+        }
+
+        // Función para formatear la fecha
+        function formatearFecha(fecha) {
+            const opciones = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: false };
+            return new Intl.DateTimeFormat('es-ES', opciones).format(new Date(fecha));
+        }
+
+        // Función para agregar marcadores al mapa
+        function agregarMarcadores(ubicaciones) {
+            // Limpiar marcadores existentes
+            map.eachLayer(layer => {
+                if (layer instanceof L.Marker) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            // Agregar marcadores para cada ubicación
+            ubicaciones.forEach(ubicacion => {
+                const fechaFormateada = formatearFecha(ubicacion.fecha); // Formatear la fecha
+                L.marker([ubicacion.latitud, ubicacion.longitud])
+                    .addTo(map)
+                    .bindPopup(`Vendedor ID: ${ubicacion.vendedor_id} <br> Fecha: ${fechaFormateada}`); // Usar la fecha formateada
+            });
+
+            // Mostrar la latitud y longitud del último vendedor filtrado (si hay)
+            if (ubicaciones.length > 0) {
+                const ultimaUbicacion = ubicaciones[ubicaciones.length - 1]; // Obtén la última ubicación
+                document.getElementById('latitud').textContent = `Latitud: ${ultimaUbicacion.latitud}`;
+                document.getElementById('longitud').textContent = `Longitud: ${ultimaUbicacion.longitud}`;
+                
+                // Centrar el mapa en la última ubicación filtrada
+                map.setView([ultimaUbicacion.latitud, ultimaUbicacion.longitud], 15);
+                document.getElementById('mensaje').textContent = ''; // Limpiar mensaje si hay ubicaciones
+            } else {
+                document.getElementById('latitud').textContent = '';
+                document.getElementById('longitud').textContent = '';
+                document.getElementById('mensaje').textContent = `No hay ubicaciones disponibles para el vendedor con ID ${document.getElementById('vendedorSelect').value}.`; // Mensaje de no disponibilidad
+            }
+
+            // Mostrar las secciones ocultas
+            document.getElementById('latitud').style.display = 'block';
+            document.getElementById('longitud').style.display = 'block';
+            document.getElementById('mensaje').style.display = 'block';
+        }
+
+        // Evento para filtrar ubicaciones por vendedor
+        document.getElementById('filterForm').addEventListener('submit', function (e) {
+            e.preventDefault(); // Evitar que el formulario se envíe de forma normal
+            const vendedorId = document.getElementById('vendedorSelect').value;
+
+            // Hacer una solicitud al backend para obtener las ubicaciones filtradas
+            fetch(`/ubicaciones?vendedor_id=${vendedorId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Error en la respuesta del servidor');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Agregar los marcadores filtrados
+                    agregarMarcadores(data);
+                })
+                .catch(error => {
+                    console.error('Error al obtener las ubicaciones:', error);
+                    document.getElementById('mensaje').textContent = 'Ocurrió un error al obtener las ubicaciones.';
+                });
+        });
+
+        // Inicializar marcadores al cargar la página
+        agregarMarcadores(ubicaciones);
+    </script>
+</body>
+</html>
